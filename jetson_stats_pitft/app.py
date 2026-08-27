@@ -23,6 +23,7 @@ class Dashboard:
         self.with_inputs = with_inputs
         self.spi_hz = spi_hz
         self.auto = False
+        self.theme = 0
         self.auto_at = time.monotonic() + 8
         self.stop_event = threading.Event()
         self.render_event = threading.Event()
@@ -40,6 +41,11 @@ class Dashboard:
             self.auto_at = time.monotonic() + 8
         self.render_event.set()
 
+    def _cycle_theme(self, amount: int) -> None:
+        with self.lock:
+            self.theme = (self.theme + amount) % len(DashboardUI.theme_names)
+        self.render_event.set()
+
     def stop(self, *_args: object) -> None:
         self.stop_event.set()
         self.render_event.set()
@@ -52,7 +58,7 @@ class Dashboard:
             with ST7789(speed_hz=self.spi_hz) as display:
                 if self.with_inputs:
                     inputs = InputMonitor(
-                        on_rotate=self._move,
+                        on_rotate=self._cycle_theme,
                         on_press=self._toggle_auto,
                         on_previous=lambda: self._move(-1),
                         on_next=lambda: self._move(1),
@@ -61,10 +67,13 @@ class Dashboard:
                 ui = DashboardUI()
                 snapshot = collector.collect()
                 with self.lock:
-                    page, auto = self.page, self.auto
+                    page, auto, theme = self.page, self.auto, self.theme
+                ui.set_theme(theme)
                 target = ui.render(snapshot, page, auto)
                 display.show(target)
                 displayed_page = page
+                displayed_theme = theme
+                displayed_auto = auto
                 regions: list[tuple[int, int, int, int]] = []
                 next_sample = time.monotonic() + self.interval
                 next_micro = time.monotonic()
@@ -74,14 +83,18 @@ class Dashboard:
                         if self.auto and now >= self.auto_at:
                             self.page = (self.page + 1) % len(ui.page_names)
                             self.auto_at = now + 8
-                        page, auto = self.page, self.auto
-                    if page != displayed_page:
+                        page, auto, theme = self.page, self.auto, self.theme
+                    if page != displayed_page or theme != displayed_theme or auto != displayed_auto:
+                        ui.set_theme(theme)
                         target = ui.render(snapshot, page, auto)
                         display.show(target)
                         displayed_page = page
+                        displayed_theme = theme
+                        displayed_auto = auto
                         regions.clear()
                     if now >= next_sample:
                         snapshot = collector.collect()
+                        ui.set_theme(theme)
                         target = ui.render(snapshot, page, auto)
                         regions = ui.regions(page)
                         random.shuffle(regions)

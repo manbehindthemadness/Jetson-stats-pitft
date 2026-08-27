@@ -61,6 +61,7 @@ class InputMonitor:
 
     def _run(self) -> None:
         previous = {name: line.get_value() for name, line in self.lines.items()}
+        idle = {name: previous[name] for name in self.callbacks}
         encoder_state = (previous["encoder_a"] << 1) | previous["encoder_b"]
         encoder_accumulator = 0
         last_press = {name: 0.0 for name in self.callbacks}
@@ -77,7 +78,8 @@ class InputMonitor:
 
             now = time.monotonic()
             for name, callback in self.callbacks.items():
-                if previous[name] == 1 and values[name] == 0 and now - last_press[name] > 0.15:
+                pressed = previous[name] == idle[name] and values[name] != idle[name]
+                if pressed and now - last_press[name] > 0.15:
                     last_press[name] = now
                     callback()
             previous = values

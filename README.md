@@ -20,9 +20,15 @@ The encoder and two front buttons move through six live pages:
 
 Controls:
 
-- Turn encoder: previous/next page
-- Press left/right PiTFT button: previous/next page
+- Turn encoder: cycle backward/forward through color schemes
+- Press top PiTFT button: previous page
+- Press bottom PiTFT button: next page
 - Press encoder: toggle automatic page rotation (eight seconds per page)
+
+The original **Orbit** colors remain the startup default. The additional
+schemes are Ember, Matrix, Synth, and Arctic. Button polarity is learned from
+the idle level at service startup, so both PiTFT buttons act on press even when
+their electrical idle levels differ.
 
 Telemetry comes from one persistent NVIDIA `tegrastats` process plus lightweight
 Linux interfaces such as `/proc`, `/sys`, `statvfs`, and the network address

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -11,16 +12,32 @@ from .metrics import Snapshot
 
 
 W, H = 240, 135
-BG = "#071019"
-PANEL = "#101e29"
-PANEL_2 = "#162936"
-TEXT = "#e8f3f7"
-MUTED = "#78909c"
-CYAN = "#28d7e5"
-GREEN = "#45e38c"
-MAGENTA = "#eb5cff"
-AMBER = "#ffc857"
-RED = "#ff5964"
+
+
+@dataclass(frozen=True)
+class Theme:
+    name: str
+    bg: str
+    header: str
+    panel: str
+    track: str
+    divider: str
+    text: str
+    muted: str
+    primary: str
+    success: str
+    accent: str
+    warn: str
+    danger: str
+
+
+THEMES = (
+    Theme("ORBIT", "#071019", "#091722", "#101e29", "#263a46", "#203441", "#e8f3f7", "#78909c", "#28d7e5", "#45e38c", "#eb5cff", "#ffc857", "#ff5964"),
+    Theme("EMBER", "#160d08", "#211109", "#2a1710", "#493022", "#3b241a", "#fff2dc", "#b69a78", "#ffb000", "#ffd166", "#ff6b35", "#ffe66d", "#ff3b30"),
+    Theme("MATRIX", "#020d08", "#041a10", "#092419", "#174631", "#103825", "#e5fff1", "#71a98a", "#00ff88", "#9cff57", "#00d1b2", "#e0ff4f", "#ff4d6d"),
+    Theme("SYNTH", "#10071c", "#190b2b", "#21123a", "#46305e", "#38234e", "#fff0ff", "#a98ab8", "#00e5ff", "#7df9ff", "#ff4fd8", "#ffd166", "#ff477e"),
+    Theme("ARCTIC", "#06101b", "#091a2a", "#10263a", "#28485f", "#1c3a50", "#edf8ff", "#809db2", "#48cae4", "#90e0ef", "#5e60ce", "#ffd166", "#ff6b6b"),
+)
 
 FONT_DIR = Path("/usr/share/fonts/truetype/dejavu")
 
@@ -67,12 +84,19 @@ def _uptime(seconds: float) -> str:
 
 class DashboardUI:
     page_names = ("DECK", "CPU", "GPU", "MEM", "NET", "SYSTEM")
+    theme_names = tuple(theme.name for theme in THEMES)
 
-    def __init__(self):
+    def __init__(self, theme: int = 0):
+        self.theme_index = theme % len(THEMES)
+        self.theme = THEMES[self.theme_index]
         self.cpu_history: deque[float] = deque([0] * 48, maxlen=48)
         self.gpu_history: deque[float] = deque([0] * 48, maxlen=48)
         self.rx_history: deque[float] = deque([0] * 48, maxlen=48)
         self.tx_history: deque[float] = deque([0] * 48, maxlen=48)
+
+    def set_theme(self, theme: int) -> None:
+        self.theme_index = theme % len(THEMES)
+        self.theme = THEMES[self.theme_index]
 
     def render(self, snapshot: Snapshot, page: int, auto: bool = False) -> Image.Image:
         self.cpu_history.append(snapshot.cpu_percent)
@@ -80,7 +104,7 @@ class DashboardUI:
         self.rx_history.append(snapshot.network_rx_bps)
         self.tx_history.append(snapshot.network_tx_bps)
         page %= len(self.page_names)
-        image = Image.new("RGB", (W, H), BG)
+        image = Image.new("RGB", (W, H), self.theme.bg)
         draw = ImageDraw.Draw(image)
         self._header(draw, snapshot, page, auto)
         renderers = (self._deck, self._cpu, self._gpu, self._memory, self._network, self._system)
@@ -127,35 +151,30 @@ class DashboardUI:
         return common + page_regions[page % len(page_regions)]
 
     def _header(self, draw: ImageDraw.ImageDraw, s: Snapshot, page: int, auto: bool) -> None:
-        draw.rectangle((0, 0, W, 18), fill="#091722")
-        draw.text((6, 3), self.page_names[page], font=F11, fill=CYAN)
-        host = s.hostname[:15]
-        label = f"{host}  {'AUTO' if auto else 'MAN'}"
-        draw.text((234, 4), label, font=F9, fill=GREEN if auto else MUTED, anchor="ra")
+        draw.rectangle((0, 0, W, 18), fill=self.theme.header)
+        draw.text((6, 3), self.page_names[page], font=F11, fill=self.theme.primary)
+        label = f"{s.hostname[:8]}  {self.theme.name}  {'A' if auto else 'M'}"
+        draw.text((234, 4), label, font=F9, fill=self.theme.success if auto else self.theme.muted, anchor="ra")
 
-    @staticmethod
-    def _footer(draw: ImageDraw.ImageDraw, page: int) -> None:
+    def _footer(self, draw: ImageDraw.ImageDraw, page: int) -> None:
         for index in range(6):
             x = 105 + index * 6
-            color = CYAN if index == page else "#29404e"
+            color = self.theme.primary if index == page else self.theme.track
             draw.ellipse((x, 129, x + 3, 132), fill=color)
 
-    @staticmethod
-    def _panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
-        draw.rounded_rectangle(box, radius=4, fill=PANEL)
+    def _panel(self, draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+        draw.rounded_rectangle(box, radius=4, fill=self.theme.panel)
 
-    @staticmethod
-    def _bar(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], value: float, color: str) -> None:
+    def _bar(self, draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], value: float, color: str) -> None:
         x0, y0, x1, y1 = box
-        draw.rounded_rectangle(box, radius=2, fill="#263a46")
+        draw.rounded_rectangle(box, radius=2, fill=self.theme.track)
         width = int((x1 - x0) * _clamp(value) / 100)
         if width:
             draw.rounded_rectangle((x0, y0, x0 + width, y1), radius=2, fill=color)
 
-    @staticmethod
-    def _spark(draw: ImageDraw.ImageDraw, values: deque[float], box: tuple[int, int, int, int], color: str, maximum: float = 100) -> None:
+    def _spark(self, draw: ImageDraw.ImageDraw, values: deque[float], box: tuple[int, int, int, int], color: str, maximum: float = 100) -> None:
         x0, y0, x1, y1 = box
-        draw.line((x0, y1, x1, y1), fill="#29404e")
+        draw.line((x0, y1, x1, y1), fill=self.theme.track)
         vals = list(values)
         if len(vals) < 2:
             return
@@ -166,80 +185,79 @@ class DashboardUI:
         ]
         draw.line(points, fill=color, width=2, joint="curve")
 
-    @staticmethod
-    def _gauge(draw: ImageDraw.ImageDraw, center: tuple[int, int], radius: int, value: float, color: str, label: str) -> None:
+    def _gauge(self, draw: ImageDraw.ImageDraw, center: tuple[int, int], radius: int, value: float, color: str, label: str) -> None:
         cx, cy = center
         box = (cx - radius, cy - radius, cx + radius, cy + radius)
-        draw.arc(box, 150, 390, fill="#29404e", width=5)
+        draw.arc(box, 150, 390, fill=self.theme.track, width=5)
         draw.arc(box, 150, 150 + 240 * _clamp(value) / 100, fill=color, width=5)
-        draw.text((cx, cy - 7), f"{value:.0f}%", font=F13, fill=TEXT, anchor="mm")
-        draw.text((cx, cy + 8), label, font=F8, fill=MUTED, anchor="mm")
+        draw.text((cx, cy - 7), f"{value:.0f}%", font=F13, fill=self.theme.text, anchor="mm")
+        draw.text((cx, cy + 8), label, font=F8, fill=self.theme.muted, anchor="mm")
 
     def _deck(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
-        self._gauge(draw, (39, 66), 27, s.cpu_percent, CYAN, "CPU")
-        self._gauge(draw, (102, 66), 27, s.gpu_percent, MAGENTA, "GPU")
+        self._gauge(draw, (39, 66), 27, s.cpu_percent, self.theme.primary, "CPU")
+        self._gauge(draw, (102, 66), 27, s.gpu_percent, self.theme.accent, "GPU")
         self._panel(draw, (137, 25, 234, 117))
         rows = (
-            ("RAM", f"{s.ram_percent:.0f}%", GREEN),
-            ("TEMP", f"{s.hottest_temp:.0f}°C", AMBER),
-            ("POWER", f"{s.total_power_w:.1f}W", MAGENTA),
-            ("FAN", f"{s.fan_rpm} rpm", CYAN),
+            ("RAM", f"{s.ram_percent:.0f}%", self.theme.success),
+            ("TEMP", f"{s.hottest_temp:.0f}°C", self.theme.warn),
+            ("POWER", f"{s.total_power_w:.1f}W", self.theme.accent),
+            ("FAN", f"{s.fan_rpm} rpm", self.theme.primary),
         )
         for i, (label, value, color) in enumerate(rows):
             y = 31 + i * 21
-            draw.text((144, y), label, font=F8, fill=MUTED)
+            draw.text((144, y), label, font=F8, fill=self.theme.muted)
             draw.text((227, y - 1), value, font=F11, fill=color, anchor="ra")
             if i < 3:
-                draw.line((144, y + 16, 227, y + 16), fill="#203441")
+                draw.line((144, y + 16, 227, y + 16), fill=self.theme.divider)
 
     def _cpu(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
         cores = s.cpu_cores or [0.0] * 12
         for i, value in enumerate(cores[:12]):
             column, row = i % 6, i // 6
             x, y = 7 + column * 38, 27 + row * 30
-            draw.text((x, y), f"{i}", font=F8, fill=MUTED)
-            draw.text((x + 31, y), f"{value:.0f}", font=F9, fill=TEXT, anchor="ra")
-            self._bar(draw, (x, y + 12, x + 31, y + 17), value, CYAN if row == 0 else GREEN)
-        draw.text((7, 90), f"AVG {s.cpu_percent:.0f}%", font=F10, fill=CYAN)
-        draw.text((233, 90), f"LOAD {s.load[0]:.2f}", font=F10, fill=MUTED, anchor="ra")
-        self._spark(draw, self.cpu_history, (7, 103, 233, 123), CYAN)
+            draw.text((x, y), f"{i}", font=F8, fill=self.theme.muted)
+            draw.text((x + 31, y), f"{value:.0f}", font=F9, fill=self.theme.text, anchor="ra")
+            self._bar(draw, (x, y + 12, x + 31, y + 17), value, self.theme.primary if row == 0 else self.theme.success)
+        draw.text((7, 90), f"AVG {s.cpu_percent:.0f}%", font=F10, fill=self.theme.primary)
+        draw.text((233, 90), f"LOAD {s.load[0]:.2f}", font=F10, fill=self.theme.muted, anchor="ra")
+        self._spark(draw, self.cpu_history, (7, 103, 233, 123), self.theme.primary)
 
     def _gpu(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
-        self._gauge(draw, (44, 65), 29, s.gpu_percent, MAGENTA, "GR3D")
+        self._gauge(draw, (44, 65), 29, s.gpu_percent, self.theme.accent, "GR3D")
         self._panel(draw, (82, 25, 234, 84))
-        draw.text((90, 31), "BOARD POWER", font=F8, fill=MUTED)
-        draw.text((226, 28), f"{s.total_power_w:.2f} W", font=F18, fill=AMBER, anchor="ra")
-        draw.text((90, 58), "HOTTEST", font=F8, fill=MUTED)
-        draw.text((226, 55), f"{s.hottest_temp:.1f}°C", font=F13, fill=RED if s.hottest_temp > 80 else GREEN, anchor="ra")
-        draw.text((7, 94), "GPU HISTORY", font=F8, fill=MUTED)
-        self._spark(draw, self.gpu_history, (7, 103, 233, 123), MAGENTA)
+        draw.text((90, 31), "BOARD POWER", font=F8, fill=self.theme.muted)
+        draw.text((226, 28), f"{s.total_power_w:.2f} W", font=F18, fill=self.theme.warn, anchor="ra")
+        draw.text((90, 58), "HOTTEST", font=F8, fill=self.theme.muted)
+        draw.text((226, 55), f"{s.hottest_temp:.1f}°C", font=F13, fill=self.theme.danger if s.hottest_temp > 80 else self.theme.success, anchor="ra")
+        draw.text((7, 94), "GPU HISTORY", font=F8, fill=self.theme.muted)
+        self._spark(draw, self.gpu_history, (7, 103, 233, 123), self.theme.accent)
 
     def _memory(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
         rows = (
-            ("RAM", s.ram_percent, f"{s.ram_used_mb / 1024:.1f} / {s.ram_total_mb / 1024:.1f} GB", GREEN),
-            ("SWAP", s.swap_percent, f"{s.swap_used_mb / 1024:.1f} / {s.swap_total_mb / 1024:.1f} GB", MAGENTA),
-            ("ROOT", s.disk_percent, f"{_storage(s.disk_used)} / {_storage(s.disk_total)}", AMBER),
+            ("RAM", s.ram_percent, f"{s.ram_used_mb / 1024:.1f} / {s.ram_total_mb / 1024:.1f} GB", self.theme.success),
+            ("SWAP", s.swap_percent, f"{s.swap_used_mb / 1024:.1f} / {s.swap_total_mb / 1024:.1f} GB", self.theme.accent),
+            ("ROOT", s.disk_percent, f"{_storage(s.disk_used)} / {_storage(s.disk_total)}", self.theme.warn),
         )
         for index, (label, percent, value, color) in enumerate(rows):
             y = 28 + index * 31
             draw.text((8, y), label, font=F10, fill=color)
-            draw.text((232, y), value, font=F9, fill=TEXT, anchor="ra")
+            draw.text((232, y), value, font=F9, fill=self.theme.text, anchor="ra")
             self._bar(draw, (8, y + 14, 232, y + 21), percent, color)
-        draw.text((8, 120), "Unified memory shared by CPU + GPU", font=F8, fill=MUTED)
+        draw.text((8, 120), "Unified memory shared by CPU + GPU", font=F8, fill=self.theme.muted)
 
     def _network(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
-        draw.text((7, 25), s.network_interface, font=F13, fill=CYAN)
-        draw.text((233, 26), s.ip_address, font=F11, fill=TEXT, anchor="ra")
-        draw.text((7, 47), "RX", font=F9, fill=GREEN)
-        draw.text((27, 44), _bytes(s.network_rx_bps), font=F13, fill=TEXT)
-        draw.text((128, 47), "TX", font=F9, fill=MAGENTA)
-        draw.text((150, 44), _bytes(s.network_tx_bps), font=F13, fill=TEXT)
+        draw.text((7, 25), s.network_interface, font=F13, fill=self.theme.primary)
+        draw.text((233, 26), s.ip_address, font=F11, fill=self.theme.text, anchor="ra")
+        draw.text((7, 47), "RX", font=F9, fill=self.theme.success)
+        draw.text((27, 44), _bytes(s.network_rx_bps), font=F13, fill=self.theme.text)
+        draw.text((128, 47), "TX", font=F9, fill=self.theme.accent)
+        draw.text((150, 44), _bytes(s.network_tx_bps), font=F13, fill=self.theme.text)
         peak = max(1024, *self.rx_history, *self.tx_history)
-        self._spark(draw, self.rx_history, (7, 73, 233, 121), GREEN, peak)
-        self._spark(draw, self.tx_history, (7, 73, 233, 121), MAGENTA, peak)
+        self._spark(draw, self.rx_history, (7, 73, 233, 121), self.theme.success, peak)
+        self._spark(draw, self.tx_history, (7, 73, 233, 121), self.theme.accent, peak)
 
     def _system(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
-        draw.text((8, 25), s.hostname, font=F24, fill=CYAN)
+        draw.text((8, 25), s.hostname, font=F24, fill=self.theme.primary)
         rows = (
             ("POWER MODE", s.nvpmodel),
             ("JETPACK", s.jetpack),
@@ -249,8 +267,8 @@ class DashboardUI:
         )
         for index, (label, value) in enumerate(rows):
             y = 56 + index * 14
-            draw.text((8, y), label, font=F8, fill=MUTED)
-            draw.text((232, y), value[:25], font=F9, fill=TEXT, anchor="ra")
+            draw.text((8, y), label, font=F8, fill=self.theme.muted)
+            draw.text((232, y), value[:25], font=F9, fill=self.theme.text, anchor="ra")
 
 
 def mock_snapshot() -> Snapshot:
