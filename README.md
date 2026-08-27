@@ -30,6 +30,10 @@ schemes are Ember, Matrix, Synth, and Arctic. Button polarity is learned from
 the idle level at service startup, so both PiTFT buttons act on press even when
 their electrical idle levels differ.
 
+The boot helper also sets the Tegra PADCTL pull-up field on all five navigation
+inputs. GPIO character-device bias flags do not override a pad left in Tegra's
+hardware pull-down state on this platform.
+
 Telemetry comes from one persistent NVIDIA `tegrastats` process plus lightweight
 Linux interfaces such as `/proc`, `/sys`, `statvfs`, and the network address
 ioctl. Static identity and slow-changing network details are cached. The default

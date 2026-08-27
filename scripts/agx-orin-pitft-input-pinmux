@@ -5,8 +5,8 @@
 set -euo pipefail
 
 readonly STATE_FILE=/run/agx-orin-pitft-input-pinmux.original
-readonly INPUT_MASK=$((0x450))
-readonly INPUT_BITS=$((0x050))
+readonly INPUT_MASK=$((0x45C))
+readonly INPUT_BITS=$((0x058))
 readonly DEVMEM=/usr/bin/busybox
 
 # Encoder A/B/switch on physical 11/12/29; PiTFT buttons on 16/18.
@@ -70,7 +70,9 @@ apply_settings() {
     local label address current desired actual
     while read -r label address; do
         current=$(( $(read_reg "$address") ))
-        # Select GPIO (bit 10 clear), enable input and tristate (bits 4/6).
+        # Select GPIO (bit 10 clear), enable input and tristate (bits 4/6),
+        # and select the Tegra PADCTL pull-up value (PUPD bits 2/3 = 0b10).
+        # GPIO character-device bias flags alone do not override these pads.
         desired=$(( (current & ~INPUT_MASK) | INPUT_BITS ))
         write_reg "$address" "$(format_hex "$desired")"
         actual=$(( $(read_reg "$address") ))
