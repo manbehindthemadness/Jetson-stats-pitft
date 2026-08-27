@@ -4,17 +4,22 @@
 
 set -euo pipefail
 
-readonly STATE_FILE=/run/agx-orin-pitft-input-pinmux.original
+readonly STATE_FILE=/run/agx-orin-pitft-input-pinmux-v3.original
 readonly INPUT_MASK=$((0x45C))
 readonly INPUT_BITS=$((0x058))
 readonly DEVMEM=/usr/bin/busybox
 
-# Encoder A/B/switch on physical 11/12/29; PiTFT buttons on 16/18.
-readonly ENC_A_ADDR=0x02430098
-readonly ENC_B_ADDR=0x02434088
+# Encoder A/B/switch on physical 31/37/29. The PiTFT top button is rerouted
+# to physical 33; its bottom button remains on physical 16.
+# Pins 31 and 37 are unused AON inputs. AGX Orin physical pin 11 is
+# output-only through the developer-kit base board and cannot read a phase.
+# Physical pin 18 is likewise behind a one-way carrier-board level shifter,
+# so it is deliberately absent from this input configuration.
+readonly ENC_A_ADDR=0x0C303010
+readonly ENC_B_ADDR=0x0C303008
 readonly ENC_SW_ADDR=0x0C303018
-readonly PREVIOUS_ADDR=0x0C303048
-readonly NEXT_ADDR=0x02434040
+readonly PREVIOUS_ADDR=0x0C303000
+readonly NEXT_ADDR=0x0C303048
 
 usage() {
     echo "Usage: agx-orin-pitft-input-pinmux {status|apply|restore}"

@@ -59,15 +59,69 @@ PADCTL registers on another board.
 
 | Function | Header pin | Tegra line | PADCTL address |
 |---|---:|---|---:|
-| Encoder A | 11 | PR.04 | `0x02430098` |
-| Encoder B | 12 | PH.07 | `0x02434088` |
-| PiTFT previous | 16 | PBB.01 | `0x0C303048` |
-| PiTFT next | 18 | PH.00 | `0x02434040` |
+| Encoder DT / A | 31 | PAA.00 | `0x0C303010` |
+| Encoder CLK / B | 37 | PAA.03 | `0x0C303008` |
+| PiTFT top / previous | 33 | PAA.02 | `0x0C303000` |
+| PiTFT bottom / next | 16 | PBB.01 | `0x0C303048` |
 | TFT MOSI | 19 | SPI1_MOSI | configured by SPI project |
 | TFT D/C | 22 | PP.04 | configured by SPI project |
 | TFT SCLK | 23 | SPI1_SCLK | configured by SPI project |
 | TFT CS | 24 | SPI1_CS0 | configured by SPI project |
 | Encoder switch | 29 | PAA.01 | `0x0C303018` |
+
+Viewed with the header vertical and physical pin 1 at the upper left, the final
+wiring is:
+
+```text
+                 AGX ORIN J30 HEADER
+                    TOP / PIN 1
+             +---------------------+
+       3V3  1| o                 o |2   5V
+            3| o                 o |4
+            5| o                 o |6   GND
+            7| o                 o |8
+       GND  9| o                 o |10
+ DO NOT USE11| x                 x |12  DO NOT USE
+           13| o                 o |14  GND
+           15| o                 o |16  BOTTOM / NEXT
+       3V3 17| o                 x |18  ISOLATE PiTFT CONTACT
+ SPI MOSI  19| o                 o |20  GND
+ SPI MISO  21| o                 o |22  TFT D/C
+ SPI SCLK  23| o                 o |24  SPI CS
+       GND 25| o                 o |26
+           27| o                 o |28
+ENCODER SW 29| o                 o |30  ENCODER GND
+ENCODER DT 31| o                 o |32
+TOP/PREVIOUS33| o                 o |34  GND
+           35| o                 o |36
+ENCODER CLK37| o                 o |38
+       GND 39| o                 o |40
+             +---------------------+
+                         BOTTOM
+```
+
+For an encoder previously connected to the Raspberry Pi-style positions, move
+DT from pin 11 to pin 31 and CLK from pin 12 to pin 37. Leave the encoder switch
+on pin 29 and its ground connected to ground; pin 30 is convenient. The input
+decoder rejects invalid quadrature transitions and coalesces mechanical contact
+bounce so a detent produces one theme action.
+
+Do not use physical pin 11 for an encoder phase on the AGX Orin Developer Kit.
+NVIDIA marks that header position as output-only because of the base-board
+signal path. Pins 31 and 37 are unused AON GPIO inputs and are the supported
+encoder phase connections for this project.
+
+The carrier also routes physical pin 18 through a one-way level shifter as
+`PWM3_40PIN_LVS`, so a PiTFT button cannot drive a signal back into the SoC on
+that pin. Isolate the PiTFT socket contact from the AGX pin 18 and reroute the
+PiTFT `BUTTONB` signal (R3 pad 1 or its shared via) to physical pin 33. The
+PiTFT's onboard 10 kOhm pull-up remains in use; do not add another pull-up. R3
+pad 2 is 3.3 V and must not be used as the button-signal connection.
+
+The signal directions above are taken from NVIDIA's
+[P3737 carrier-board design resources](https://developer.nvidia.com/embedded/downloads/).
+The `BUTTONA`, `BUTTONB`, R1, and R3 nets are available in Adafruit's original
+[Mini PiTFT Eagle design files](https://github.com/adafruit/Adafruit-Mini-PiTFT-240x135-TFT-PCB).
 
 The physical header's SPI1 controller appears as `/dev/spidev0.0` on this
 platform. First configure its live pins with

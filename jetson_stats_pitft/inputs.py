@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -9,12 +10,15 @@ from collections.abc import Callable
 import gpiod
 
 
+LOG = logging.getLogger(__name__)
+
+
 LINES = {
-    "encoder_a": "PR.04",   # physical 11
-    "encoder_b": "PH.07",   # physical 12
-    "encoder_sw": "PAA.01", # physical 29
-    "previous": "PBB.01",   # physical 16
-    "next": "PH.00",        # physical 18
+    "encoder_a": "PAA.00",  # physical 31
+    "encoder_b": "PAA.03",  # physical 37
+    "encoder_sw": "PAA.01",  # physical 29
+    "previous": "PAA.02",  # physical 33, rerouted PiTFT top button
+    "next": "PBB.01",  # physical 16, PiTFT bottom button
 }
 
 
@@ -62,18 +66,37 @@ class InputMonitor:
     def _run(self) -> None:
         previous = {name: line.get_value() for name, line in self.lines.items()}
         idle = {name: previous[name] for name in self.callbacks}
+        LOG.info(
+            "input idle levels: %s",
+            " ".join(f"{name}={value}" for name, value in previous.items()),
+        )
         encoder_state = (previous["encoder_a"] << 1) | previous["encoder_b"]
         encoder_accumulator = 0
+        last_rotate = 0.0
         last_press = {name: 0.0 for name in self.callbacks}
 
         while not self.stop_event.wait(0.005):
             values = {name: line.get_value() for name, line in self.lines.items()}
             state = (values["encoder_a"] << 1) | values["encoder_b"]
             if state != encoder_state:
-                encoder_accumulator += self._QUADRATURE.get((encoder_state << 2) | state, 0)
+                delta = self._QUADRATURE.get((encoder_state << 2) | state, 0)
+                encoder_accumulator += delta
+                LOG.debug(
+                    "encoder edge %d>%d delta=%+d accumulator=%+d",
+                    encoder_state,
+                    state,
+                    delta,
+                    encoder_accumulator,
+                )
                 encoder_state = state
                 if abs(encoder_accumulator) >= 4:
-                    self.on_rotate(1 if encoder_accumulator > 0 else -1)
+                    now = time.monotonic()
+                    # The compact mechanical encoder can emit more than one
+                    # quadrature cycle while settling at a single detent.
+                    # Coalesce that burst into one deliberate UI action.
+                    if now - last_rotate >= 0.075:
+                        self.on_rotate(1 if encoder_accumulator > 0 else -1)
+                        last_rotate = now
                     encoder_accumulator = 0
 
             now = time.monotonic()
@@ -81,6 +104,7 @@ class InputMonitor:
                 pressed = previous[name] == idle[name] and values[name] != idle[name]
                 if pressed and now - last_press[name] > 0.15:
                     last_press[name] = now
+                    LOG.info("input press: %s (%d>%d)", name, previous[name], values[name])
                     callback()
             previous = values
 

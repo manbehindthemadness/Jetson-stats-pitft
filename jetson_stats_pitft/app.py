@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 import random
 import signal
@@ -13,6 +14,9 @@ from .display import ST7789
 from .inputs import InputMonitor
 from .metrics import MetricCollector
 from .ui import DashboardUI, mock_snapshot
+
+
+LOG = logging.getLogger(__name__)
 
 
 class Dashboard:
@@ -33,17 +37,20 @@ class Dashboard:
         with self.lock:
             self.page = (self.page + amount) % len(DashboardUI.page_names)
             self.auto_at = time.monotonic() + 8
+            LOG.info("page changed to %s", DashboardUI.page_names[self.page])
         self.render_event.set()
 
     def _toggle_auto(self) -> None:
         with self.lock:
             self.auto = not self.auto
             self.auto_at = time.monotonic() + 8
+            LOG.info("automatic page cycling %s", "enabled" if self.auto else "disabled")
         self.render_event.set()
 
     def _cycle_theme(self, amount: int) -> None:
         with self.lock:
             self.theme = (self.theme + amount) % len(DashboardUI.theme_names)
+            LOG.info("theme changed to %s", DashboardUI.theme_names[self.theme])
         self.render_event.set()
 
     def stop(self, *_args: object) -> None:
@@ -134,6 +141,7 @@ def _preview(directory: Path) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description="Fast Jetson telemetry for an ST7789 Mini PiTFT")
     parser.add_argument("--page", type=_page, default=0, help="initial page name or number")
     parser.add_argument("--interval", type=float, default=0.5, help="telemetry refresh seconds")
