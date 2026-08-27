@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from jetson_stats_pitft.metrics import _fan_rpm, _find_fan_rpm_path
+from jetson_stats_pitft.metrics import Snapshot, _fan_rpm, _find_fan_rpm_path
 
 
 class FanRpmTests(unittest.TestCase):
@@ -44,6 +44,22 @@ class FanRpmTests(unittest.TestCase):
 
             self.assertEqual(_find_fan_rpm_path(str(root)), "")
             self.assertEqual(_fan_rpm(""), 0)
+
+
+class SnapshotTests(unittest.TestCase):
+    def test_network_percent_uses_busiest_full_duplex_direction(self) -> None:
+        snapshot = Snapshot(
+            network_rx_bps=125_000_000,
+            network_tx_bps=62_500_000,
+            network_link_mbps=1_000,
+        )
+
+        self.assertEqual(snapshot.network_percent, 100.0)
+
+    def test_network_percent_handles_unknown_link_speed(self) -> None:
+        snapshot = Snapshot(network_rx_bps=1_000_000, network_link_mbps=0)
+
+        self.assertEqual(snapshot.network_percent, 0.0)
 
 
 if __name__ == "__main__":

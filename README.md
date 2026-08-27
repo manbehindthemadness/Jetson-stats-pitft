@@ -11,7 +11,8 @@ Wayland, browser, or heavyweight dashboard process.
 
 The encoder and two front buttons move through six live pages:
 
-1. **Deck** — CPU and GPU gauges, memory, temperature, power, and fan speed
+1. **Deck** — CPU, GPU, memory, and network-utilization gauges plus temperature,
+   power, fan speed, and detailed values
 2. **CPU** — all 12 cores, aggregate utilization, load, and a sparkline
 3. **GPU** — GR3D load, board power, temperature, and history
 4. **Memory** — RAM, swap, and root filesystem capacity

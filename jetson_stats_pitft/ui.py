@@ -118,7 +118,8 @@ class DashboardUI:
         common = [(0, 0, 120, 18), (120, 0, 240, 18), (0, 127, 240, 135)]
         page_regions = (
             [
-                (0, 18, 70, 127), (70, 18, 137, 127),
+                (0, 18, 70, 73), (70, 18, 137, 73),
+                (0, 73, 70, 127), (70, 73, 137, 127),
                 (137, 18, 240, 49), (137, 49, 240, 70),
                 (137, 70, 240, 91), (137, 91, 240, 127),
             ],
@@ -194,8 +195,10 @@ class DashboardUI:
         draw.text((cx, cy + 8), label, font=F10, fill=self.theme.muted, anchor="mm")
 
     def _deck(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
-        self._gauge(draw, (39, 66), 27, s.cpu_percent, self.theme.primary, "CPU")
-        self._gauge(draw, (102, 66), 27, s.gpu_percent, self.theme.accent, "GPU")
+        self._gauge(draw, (37, 48), 21, s.cpu_percent, self.theme.primary, "CPU")
+        self._gauge(draw, (101, 48), 21, s.gpu_percent, self.theme.accent, "GPU")
+        self._gauge(draw, (37, 99), 21, s.ram_percent, self.theme.success, "MEM")
+        self._gauge(draw, (101, 99), 21, s.network_percent, self.theme.warn, "NET")
         self._panel(draw, (137, 25, 234, 117))
         rows = (
             ("RAM", f"{s.ram_percent:.0f}%", self.theme.success),
@@ -282,6 +285,7 @@ def mock_snapshot() -> Snapshot:
         uptime_seconds=197340, disk_used=35_433_234_432, disk_total=57_982_058_496,
         network_interface="end0", ip_address="10.4.222.52",
         network_rx_bps=2_480_000, network_tx_bps=384_000, fan_rpm=1180,
+        network_link_mbps=100,
         nvpmodel="MODE_30W", l4t="R39.2.1", jetpack="7.2.1-b49",
         kernel="6.8.12-1021-tegra",
     )

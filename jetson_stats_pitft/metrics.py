@@ -44,6 +44,7 @@ class Snapshot:
     ip_address: str = "—"
     network_rx_bps: float = 0.0
     network_tx_bps: float = 0.0
+    network_link_mbps: int = 0
     fan_rpm: int = 0
     nvpmodel: str = "unknown"
     l4t: str = "unknown"
@@ -72,6 +73,13 @@ class Snapshot:
         if preferred is not None:
             return preferred / 1000.0
         return sum(self.power_mw.values()) / 1000.0
+
+    @property
+    def network_percent(self) -> float:
+        if self.network_link_mbps <= 0:
+            return 0.0
+        busiest_direction_bps = max(self.network_rx_bps, self.network_tx_bps) * 8
+        return min(100.0, 100.0 * busiest_direction_bps / (self.network_link_mbps * 1_000_000))
 
 
 def parse_tegrastats(line: str) -> dict[str, Any]:
@@ -212,6 +220,15 @@ def _ipv4_address(interface: str) -> str:
         return "—"
 
 
+def _network_speed_mbps(interface: str) -> int:
+    if not interface:
+        return 0
+    try:
+        return max(0, int(_read_text(f"/sys/class/net/{interface}/speed")))
+    except ValueError:
+        return 0
+
+
 def _find_fan_rpm_path(hwmon_root: str = "/sys/class/hwmon") -> str:
     """Locate either a standard hwmon fan input or NVIDIA's tachometer RPM."""
     for hwmon in sorted(glob.glob(os.path.join(hwmon_root, "hwmon*"))):
@@ -248,6 +265,7 @@ class MetricCollector:
         self._last_network: tuple[float, int, int] | None = None
         self._cached_interface = _default_interface()
         self._cached_ip = _ipv4_address(self._cached_interface)
+        self._cached_network_mbps = _network_speed_mbps(self._cached_interface)
         self._fan_rpm_path = _find_fan_rpm_path()
         self._slow_poll_at = 0.0
 
@@ -287,6 +305,7 @@ class MetricCollector:
         if now >= self._slow_poll_at:
             self._cached_interface = _default_interface()
             self._cached_ip = _ipv4_address(self._cached_interface)
+            self._cached_network_mbps = _network_speed_mbps(self._cached_interface)
             self._slow_poll_at = now + 5.0
         interface = self._cached_interface
         rx = int(_read_text(f"/sys/class/net/{interface}/statistics/rx_bytes", "0") or 0)
@@ -319,6 +338,7 @@ class MetricCollector:
             ip_address=self._cached_ip,
             network_rx_bps=rx_bps,
             network_tx_bps=tx_bps,
+            network_link_mbps=self._cached_network_mbps,
             fan_rpm=_fan_rpm(self._fan_rpm_path),
             nvpmodel=self.nvpmodel,
             l4t=self.l4t,
