@@ -124,6 +124,8 @@ class Dashboard:
 def _page(value: str) -> int:
     lowered = value.lower()
     names = [name.lower() for name in DashboardUI.page_names]
+    aliases = {"mem": "memory", "net": "network"}
+    lowered = aliases.get(lowered, lowered)
     if lowered in names:
         return names.index(lowered)
     try:

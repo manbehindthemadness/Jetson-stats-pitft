@@ -1,3 +1,3 @@
 """Jetson telemetry dashboard for the Adafruit Mini PiTFT."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"

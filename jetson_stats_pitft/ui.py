@@ -83,7 +83,7 @@ def _uptime(seconds: float) -> str:
 
 
 class DashboardUI:
-    page_names = ("DECK", "CPU", "GPU", "MEM", "NET", "SYSTEM")
+    page_names = ("DECK", "CPU", "GPU", "MEMORY", "NETWORK", "SYSTEM")
     theme_names = tuple(theme.name for theme in THEMES)
 
     def __init__(self, theme: int = 0):
