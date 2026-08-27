@@ -212,12 +212,26 @@ def _ipv4_address(interface: str) -> str:
         return "—"
 
 
-def _fan_rpm() -> int:
-    for path in glob.glob("/sys/class/hwmon/hwmon*/fan*_input"):
-        value = _read_text(path)
-        if value.isdigit():
-            return int(value)
-    return 0
+def _find_fan_rpm_path(hwmon_root: str = "/sys/class/hwmon") -> str:
+    """Locate either a standard hwmon fan input or NVIDIA's tachometer RPM."""
+    for hwmon in sorted(glob.glob(os.path.join(hwmon_root, "hwmon*"))):
+        candidates = sorted(glob.glob(os.path.join(hwmon, "fan*_input")))
+        if "tach" in _read_text(os.path.join(hwmon, "name")).lower():
+            candidates.append(os.path.join(hwmon, "rpm"))
+        for path in candidates:
+            try:
+                if int(_read_text(path)) >= 0:
+                    return path
+            except ValueError:
+                continue
+    return ""
+
+
+def _fan_rpm(path: str) -> int:
+    try:
+        return max(0, int(_read_text(path))) if path else 0
+    except ValueError:
+        return 0
 
 
 class MetricCollector:
@@ -234,6 +248,7 @@ class MetricCollector:
         self._last_network: tuple[float, int, int] | None = None
         self._cached_interface = _default_interface()
         self._cached_ip = _ipv4_address(self._cached_interface)
+        self._fan_rpm_path = _find_fan_rpm_path()
         self._slow_poll_at = 0.0
 
     @staticmethod
@@ -304,7 +319,7 @@ class MetricCollector:
             ip_address=self._cached_ip,
             network_rx_bps=rx_bps,
             network_tx_bps=tx_bps,
-            fan_rpm=_fan_rpm(),
+            fan_rpm=_fan_rpm(self._fan_rpm_path),
             nvpmodel=self.nvpmodel,
             l4t=self.l4t,
             jetpack=self.jetpack,

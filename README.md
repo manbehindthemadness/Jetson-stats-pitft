@@ -36,8 +36,12 @@ hardware pull-down state on this platform.
 
 Telemetry comes from one persistent NVIDIA `tegrastats` process plus lightweight
 Linux interfaces such as `/proc`, `/sys`, `statvfs`, and the network address
-ioctl. Static identity and slow-changing network details are cached. The default
-screen update is 2 Hz while GPIO input is sampled independently at 200 Hz.
+ioctl. Fan speed is read from the kernel hwmon tachometer because JetPack 7
+`tegrastats` does not report it. Both the standard `fan*_input` layout and
+NVIDIA's `pwm_tach/rpm` layout are supported without depending on an unstable
+`hwmon` number. Static identity and slow-changing paths and network details are
+cached. The default screen update is 2 Hz while GPIO input is sampled
+independently at 200 Hz.
 The SPI clock defaults to the signal-integrity-tested 4 MHz; the tiny frame is
 still transferred quickly at that conservative rate.
 
