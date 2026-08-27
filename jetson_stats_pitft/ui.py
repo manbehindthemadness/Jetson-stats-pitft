@@ -191,7 +191,7 @@ class DashboardUI:
         draw.arc(box, 150, 390, fill=self.theme.track, width=5)
         draw.arc(box, 150, 150 + 240 * _clamp(value) / 100, fill=color, width=5)
         draw.text((cx, cy - 7), f"{value:.0f}%", font=F13, fill=self.theme.text, anchor="mm")
-        draw.text((cx, cy + 8), label, font=F8, fill=self.theme.muted, anchor="mm")
+        draw.text((cx, cy + 8), label, font=F10, fill=self.theme.muted, anchor="mm")
 
     def _deck(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
         self._gauge(draw, (39, 66), 27, s.cpu_percent, self.theme.primary, "CPU")
