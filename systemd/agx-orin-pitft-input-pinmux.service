@@ -1,0 +1,11 @@
+[Unit]
+Description=Configure AGX Orin PiTFT buttons and encoder live pinmux
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agx-orin-pitft-input-pinmux apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Copyright 2026 Kevin Eales
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+readonly STATE_FILE=/run/agx-orin-pitft-input-pinmux.original
+readonly INPUT_MASK=$((0x450))
+readonly INPUT_BITS=$((0x050))
+readonly DEVMEM=/usr/bin/busybox
+
+# Encoder A/B/switch on physical 11/12/29; PiTFT buttons on 16/18.
+readonly ENC_A_ADDR=0x02430098
+readonly ENC_B_ADDR=0x02434088
+readonly ENC_SW_ADDR=0x0C303018
+readonly PREVIOUS_ADDR=0x0C303048
+readonly NEXT_ADDR=0x02434040
+
+usage() {
+    echo "Usage: agx-orin-pitft-input-pinmux {status|apply|restore}"
+}
+
+if [[ ${EUID} -ne 0 ]]; then
+    exec sudo -n -- "$0" "$@"
+fi
+if [[ ! -x ${DEVMEM} ]]; then
+    echo "Missing ${DEVMEM}; install busybox." >&2
+    exit 1
+fi
+
+mapfile -t compatibles < <(tr '\0' '\n' </proc/device-tree/compatible)
+if ! printf '%s\n' "${compatibles[@]}" | grep -qx 'nvidia,tegra234' ||
+   ! printf '%s\n' "${compatibles[@]}" | grep -qx 'nvidia,p3737-0000+p3701-0000'; then
+    echo "Refusing to run: validated only on the AGX Orin Developer Kit p3737+p3701." >&2
+    exit 1
+fi
+
+read_reg() { "${DEVMEM}" devmem "$1" 32; }
+write_reg() { "${DEVMEM}" devmem "$1" 32 "$2" >/dev/null; }
+format_hex() { printf '0x%08X' "$1"; }
+
+registers() {
+    cat <<EOF
+ENCODER_A ${ENC_A_ADDR}
+ENCODER_B ${ENC_B_ADDR}
+ENCODER_SW ${ENC_SW_ADDR}
+PREVIOUS ${PREVIOUS_ADDR}
+NEXT ${NEXT_ADDR}
+EOF
+}
+
+show_status() {
+    local label address
+    while read -r label address; do
+        printf '%-12s %s = %s\n' "$label" "$address" "$(read_reg "$address")"
+    done < <(registers)
+}
+
+save_originals() {
+    [[ -e ${STATE_FILE} ]] && return
+    umask 077
+    local _label address
+    while read -r _label address; do
+        printf '%s %s\n' "$address" "$(read_reg "$address")"
+    done < <(registers) >"${STATE_FILE}"
+}
+
+apply_settings() {
+    save_originals
+    local label address current desired actual
+    while read -r label address; do
+        current=$(( $(read_reg "$address") ))
+        # Select GPIO (bit 10 clear), enable input and tristate (bits 4/6).
+        desired=$(( (current & ~INPUT_MASK) | INPUT_BITS ))
+        write_reg "$address" "$(format_hex "$desired")"
+        actual=$(( $(read_reg "$address") ))
+        if (( (actual & INPUT_MASK) != INPUT_BITS )); then
+            echo "Verification failed for ${label}: $(format_hex "$actual")" >&2
+            exit 1
+        fi
+    done < <(registers)
+    show_status
+}
+
+restore_settings() {
+    [[ -r ${STATE_FILE} ]] || { echo "No saved state for this boot." >&2; exit 1; }
+    local address value allowed
+    while read -r address value; do
+        allowed=false
+        while read -r _label known; do [[ $address == "$known" ]] && allowed=true; done < <(registers)
+        [[ $allowed == true ]] || { echo "Unexpected address in state: $address" >&2; exit 1; }
+        write_reg "$address" "$value"
+    done <"${STATE_FILE}"
+    show_status
+}
+
+case "${1:-}" in
+    status) show_status ;;
+    apply) apply_settings ;;
+    restore) restore_settings ;;
+    *) usage >&2; exit 2 ;;
+esac

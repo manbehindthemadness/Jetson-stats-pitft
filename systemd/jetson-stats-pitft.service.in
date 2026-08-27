@@ -1,0 +1,17 @@
+[Unit]
+Description=Jetson Stats Mini PiTFT dashboard
+Documentation=https://github.com/manbehindthemadness/Jetson-stats-pitft
+After=agx-orin-spi1-pinmux.service agx-pitft-pinmux.service agx-orin-pitft-input-pinmux.service
+Wants=agx-orin-pitft-input-pinmux.service
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+SupplementaryGroups=gpio
+ExecStart=/opt/jetson-stats-pitft/venv/bin/jetson-stats-pitft
+Restart=on-failure
+RestartSec=2
+Nice=-2
+
+[Install]
+WantedBy=multi-user.target
