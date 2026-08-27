@@ -11,8 +11,8 @@ Wayland, browser, or heavyweight dashboard process.
 
 The encoder and two front buttons move through six live pages:
 
-1. **Deck** — CPU, GPU, memory, and network-utilization gauges plus temperature,
-   power, fan speed, and detailed values
+1. **Deck** — CPU, GPU, memory, and network-utilization gauges plus live Tensor
+   Core activity, temperature, power, and fan speed
 2. **CPU** — all 12 cores, aggregate utilization, load, and a sparkline
 3. **GPU** — GR3D load, board power, temperature, and history
 4. **Memory** — RAM, swap, and root filesystem capacity
@@ -43,6 +43,14 @@ NVIDIA's `pwm_tach/rpm` layout are supported without depending on an unstable
 `hwmon` number. Static identity and slow-changing paths and network details are
 cached. The default screen update is 2 Hz while GPIO input is sampled
 independently at 200 Hz.
+
+The Deck's **TRT** row is intentionally blank while Tensor Cores are dormant.
+A yellow-and-black striped **ON** badge appears when the CUPTI PM-sampling
+sentinel observes a meaningful increase in GA10B tensor-pipeline instructions.
+The root-owned sentinel is separate from the unprivileged dashboard because the
+Jetson performance-counter device is restricted; only an event timestamp is
+shared through `/run`. Stop `jetson-tensor-sentinel.service` before using Nsight
+Compute, since both tools need exclusive access to the GPU performance counters.
 The SPI clock defaults to the signal-integrity-tested 4 MHz; the tiny frame is
 still transferred quickly at that conservative rate.
 
@@ -147,6 +155,8 @@ The installer:
 - creates `/opt/jetson-stats-pitft/venv` using system packages;
 - installs a guarded boot-time helper for the five input pads;
 - enables `agx-orin-pitft-input-pinmux.service`;
+- builds and enables the lightweight CUPTI Tensor Core sentinel when the CUDA
+  development files are installed;
 - enables and starts `jetson-stats-pitft.service` as the invoking user.
 
 The SPI pinmux service from AGX-Orin-SPI1 should already be enabled. Check the
@@ -154,6 +164,7 @@ dashboard with:
 
 ```bash
 systemctl status jetson-stats-pitft.service
+journalctl -u jetson-tensor-sentinel.service -f
 journalctl -u jetson-stats-pitft.service -f
 ```
 

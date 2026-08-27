@@ -194,6 +194,24 @@ class DashboardUI:
         draw.text((cx, cy - 7), f"{value:.0f}%", font=F13, fill=self.theme.text, anchor="mm")
         draw.text((cx, cy + 8), label, font=F10, fill=self.theme.muted, anchor="mm")
 
+    @staticmethod
+    def _hazard_on(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int]) -> None:
+        """Draw a theme-independent, high-visibility Tensor Core indicator."""
+        x0, y0, x1, y1 = box
+        yellow = "#ffd21f"
+        draw.rounded_rectangle(box, radius=3, fill=yellow)
+        height = y1 - y0
+        for bottom in range(x0 - 12, x1, 8):
+            top = bottom + 12
+            clipped_bottom = max(x0 + 1, bottom)
+            clipped_top = min(x1 - 1, top)
+            bottom_y = y1 - 1 - max(0, x0 + 1 - bottom) * height / 12
+            top_y = y0 + 1 + max(0, top - (x1 - 1)) * height / 12
+            draw.line((clipped_bottom, bottom_y, clipped_top, top_y), fill="#050505", width=4)
+        draw.rounded_rectangle((x0 + 11, y0 + 2, x1 - 11, y1 - 2), radius=2, fill=yellow)
+        draw.text(((x0 + x1) // 2, (y0 + y1) // 2), "ON", font=F11, fill="#050505", anchor="mm")
+        draw.rounded_rectangle(box, radius=3, outline="#050505", width=2)
+
     def _deck(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
         self._gauge(draw, (37, 48), 21, s.cpu_percent, self.theme.primary, "CPU")
         self._gauge(draw, (101, 48), 21, s.gpu_percent, self.theme.accent, "GPU")
@@ -201,7 +219,7 @@ class DashboardUI:
         self._gauge(draw, (101, 99), 21, s.network_percent, self.theme.warn, "NET")
         self._panel(draw, (137, 25, 234, 117))
         rows = (
-            ("RAM", f"{s.ram_percent:.0f}%", self.theme.success),
+            ("TRT", "", self.theme.success),
             ("TEMP", f"{s.hottest_temp:.0f}°C", self.theme.warn),
             ("POWER", f"{s.total_power_w:.1f}W", self.theme.accent),
             ("FAN", f"{s.fan_rpm} rpm", self.theme.primary),
@@ -209,7 +227,10 @@ class DashboardUI:
         for i, (label, value, color) in enumerate(rows):
             y = 31 + i * 21
             draw.text((144, y), label, font=F8, fill=self.theme.muted)
-            draw.text((227, y - 1), value, font=F11, fill=color, anchor="ra")
+            if i == 0 and s.tensor_active:
+                self._hazard_on(draw, (184, y - 4, 227, y + 13))
+            elif value:
+                draw.text((227, y - 1), value, font=F11, fill=color, anchor="ra")
             if i < 3:
                 draw.line((144, y + 16, 227, y + 16), fill=self.theme.divider)
 
@@ -285,6 +306,7 @@ def mock_snapshot() -> Snapshot:
         uptime_seconds=197340, disk_used=35_433_234_432, disk_total=57_982_058_496,
         network_interface="end0", ip_address="10.4.222.52",
         network_rx_bps=2_480_000, network_tx_bps=384_000, fan_rpm=1180,
+        tensor_active=True,
         network_link_mbps=100,
         nvpmodel="MODE_30W", l4t="R39.2.1", jetpack="7.2.1-b49",
         kernel="6.8.12-1021-tegra",

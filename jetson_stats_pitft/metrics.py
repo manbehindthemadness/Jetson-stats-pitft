@@ -46,6 +46,7 @@ class Snapshot:
     network_tx_bps: float = 0.0
     network_link_mbps: int = 0
     fan_rpm: int = 0
+    tensor_active: bool = False
     nvpmodel: str = "unknown"
     l4t: str = "unknown"
     jetpack: str = "unknown"
@@ -251,6 +252,20 @@ def _fan_rpm(path: str) -> int:
         return 0
 
 
+def _tensor_active(
+    path: str = "/run/jetson-stats-pitft/tensor-active",
+    hold_seconds: float = 2.0,
+    now: float | None = None,
+) -> bool:
+    """Hold the latest Tensor Core event on-screen long enough to see it."""
+    try:
+        event_time = float(_read_text(path))
+    except ValueError:
+        return False
+    age = (time.time() if now is None else now) - event_time
+    return -0.5 <= age <= hold_seconds
+
+
 class MetricCollector:
     def __init__(self, interval_ms: int = 500):
         self.tegrastats = TegrastatsReader(interval_ms)
@@ -340,6 +355,7 @@ class MetricCollector:
             network_tx_bps=tx_bps,
             network_link_mbps=self._cached_network_mbps,
             fan_rpm=_fan_rpm(self._fan_rpm_path),
+            tensor_active=_tensor_active(),
             nvpmodel=self.nvpmodel,
             l4t=self.l4t,
             jetpack=self.jetpack,

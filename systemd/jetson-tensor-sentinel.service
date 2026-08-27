@@ -1,0 +1,14 @@
+[Unit]
+Description=Jetson Tensor Core activity sentinel
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/jetson-tensor-sentinel
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=jetson-stats-pitft
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
