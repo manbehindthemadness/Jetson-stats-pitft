@@ -13,6 +13,8 @@ import threading
 import time
 from typing import Any
 
+from .codex_usage import CodexUsage, CodexUsageReader
+
 
 RAM_RE = re.compile(r"RAM\s+(\d+)/(\d+)MB")
 SWAP_RE = re.compile(r"SWAP\s+(\d+)/(\d+)MB")
@@ -51,6 +53,7 @@ class Snapshot:
     l4t: str = "unknown"
     jetpack: str = "unknown"
     kernel: str = "unknown"
+    codex_usage: CodexUsage = field(default_factory=CodexUsage)
 
     @property
     def ram_percent(self) -> float:
@@ -269,6 +272,7 @@ def _tensor_active(
 class MetricCollector:
     def __init__(self, interval_ms: int = 500):
         self.tegrastats = TegrastatsReader(interval_ms)
+        self.codex = CodexUsageReader()
         self.hostname = socket.gethostname()
         self.kernel = os.uname().release
         self.l4t = self._read_l4t()
@@ -292,8 +296,10 @@ class MetricCollector:
 
     def start(self) -> None:
         self.tegrastats.start()
+        self.codex.start()
 
     def stop(self) -> None:
+        self.codex.stop()
         self.tegrastats.stop()
 
     def collect(self) -> Snapshot:
@@ -360,4 +366,5 @@ class MetricCollector:
             l4t=self.l4t,
             jetpack=self.jetpack,
             kernel=self.kernel,
+            codex_usage=self.codex.snapshot(),
         )

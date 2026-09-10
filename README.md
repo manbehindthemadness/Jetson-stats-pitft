@@ -9,7 +9,7 @@ Wayland, browser, or heavyweight dashboard process.
 
 ## What it shows
 
-The encoder and two front buttons move through six live pages:
+The encoder and two front buttons move through seven live pages:
 
 1. **Deck** — CPU, GPU, memory, and network-utilization gauges plus live Tensor
    Core activity, temperature, power, and fan speed
@@ -18,6 +18,10 @@ The encoder and two front buttons move through six live pages:
 4. **Memory** — RAM, swap, and root filesystem capacity
 5. **Network** — interface, address, RX/TX rates, and traffic history
 6. **System** — hostname, power mode, JetPack, L4T, kernel, and uptime
+7. **Codex** — local account usage, remaining allowance, reset countdown,
+   credit availability, and banked rate-limit resets
+
+![Codex usage preview](docs/previews/6-codex.png)
 
 Controls:
 
@@ -43,6 +47,12 @@ NVIDIA's `pwm_tach/rpm` layout are supported without depending on an unstable
 `hwmon` number. Static identity and slow-changing paths and network details are
 cached. The default screen update is 2 Hz while GPIO input is sampled
 independently at 200 Hz.
+
+The Codex page reads `account/rateLimits/read` from one persistent local
+`codex app-server --stdio` process as the dashboard user. It refreshes once per
+minute, does not submit prompts or start agent turns, and never exposes or
+copies Codex credentials. The executable is discovered from `CODEX_BIN`,
+`PATH`, or the dashboard user's `~/.local/bin/codex`, in that order.
 
 The Deck's **TRT** row is intentionally blank while Tensor Cores are dormant.
 A yellow-and-black striped **ON** badge appears when the CUPTI PM-sampling

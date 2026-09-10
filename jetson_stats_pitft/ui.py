@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+import time
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .codex_usage import CodexUsage, UsageWindow
 from .metrics import Snapshot
 
 
@@ -82,8 +84,20 @@ def _uptime(seconds: float) -> str:
     return f"{days}d {hours:02}:{minutes:02}" if days else f"{hours:02}:{minutes:02}"
 
 
+def _remaining(timestamp: float) -> str:
+    remaining = max(0, int(timestamp - time.time()))
+    days, remaining = divmod(remaining, 86400)
+    hours, remaining = divmod(remaining, 3600)
+    minutes = remaining // 60
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
 class DashboardUI:
-    page_names = ("DECK", "CPU", "GPU", "MEMORY", "NETWORK", "SYSTEM")
+    page_names = ("DECK", "CPU", "GPU", "MEMORY", "NETWORK", "SYSTEM", "CODEX")
     theme_names = tuple(theme.name for theme in THEMES)
 
     def __init__(self, theme: int = 0):
@@ -107,7 +121,10 @@ class DashboardUI:
         image = Image.new("RGB", (W, H), self.theme.bg)
         draw = ImageDraw.Draw(image)
         self._header(draw, snapshot, page, auto)
-        renderers = (self._deck, self._cpu, self._gpu, self._memory, self._network, self._system)
+        renderers = (
+            self._deck, self._cpu, self._gpu, self._memory,
+            self._network, self._system, self._codex,
+        )
         renderers[page](draw, snapshot)
         self._footer(draw, page)
         return image
@@ -148,6 +165,10 @@ class DashboardUI:
                 (0, 81, 120, 105), (120, 81, 240, 105),
                 (0, 105, 120, 127), (120, 105, 240, 127),
             ],
+            [
+                (0, 18, 90, 100), (90, 18, 240, 100),
+                (0, 100, 120, 127), (120, 100, 240, 127),
+            ],
         )
         return common + page_regions[page % len(page_regions)]
 
@@ -158,8 +179,10 @@ class DashboardUI:
         draw.text((234, 4), label, font=F9, fill=self.theme.success if auto else self.theme.muted, anchor="ra")
 
     def _footer(self, draw: ImageDraw.ImageDraw, page: int) -> None:
-        for index in range(6):
-            x = 105 + index * 6
+        count = len(self.page_names)
+        start = (W - ((count - 1) * 6 + 4)) // 2
+        for index in range(count):
+            x = start + index * 6
             color = self.theme.primary if index == page else self.theme.track
             draw.ellipse((x, 129, x + 3, 132), fill=color)
 
@@ -294,6 +317,44 @@ class DashboardUI:
             draw.text((8, y), label, font=F8, fill=self.theme.muted)
             draw.text((232, y), value[:25], font=F9, fill=self.theme.text, anchor="ra")
 
+    def _codex(self, draw: ImageDraw.ImageDraw, s: Snapshot) -> None:
+        usage = s.codex_usage
+        if usage.error and not usage.windows:
+            draw.text((120, 58), "USAGE UNAVAILABLE", font=F13, fill=self.theme.warn, anchor="mm")
+            draw.text((120, 78), usage.error[:34], font=F8, fill=self.theme.muted, anchor="mm")
+            return
+
+        draw.text((7, 22), usage.plan or usage.name, font=F9, fill=self.theme.muted)
+        windows = usage.windows[:2]
+        if len(windows) == 1:
+            window = windows[0]
+            color = self.theme.danger if window.used_percent >= 90 else self.theme.primary
+            self._gauge(draw, (48, 70), 31, window.used_percent, color, window.label)
+            self._panel(draw, (91, 34, 233, 94))
+            draw.text((99, 41), "REMAINING", font=F8, fill=self.theme.muted)
+            draw.text((225, 38), f"{100 - window.used_percent}%", font=F24, fill=self.theme.success, anchor="ra")
+            draw.text((99, 68), "RESET IN", font=F8, fill=self.theme.muted)
+            draw.text((225, 65), _remaining(window.resets_at), font=F18, fill=self.theme.accent, anchor="ra")
+        else:
+            for index, window in enumerate(windows):
+                x = 59 + index * 120
+                color = self.theme.danger if window.used_percent >= 90 else (
+                    self.theme.warn if window.used_percent >= 70 else self.theme.primary
+                )
+                self._gauge(draw, (x, 64), 28, window.used_percent, color, window.label)
+                draw.text((x, 99), f"RESET {_remaining(window.resets_at)}", font=F8, fill=self.theme.muted, anchor="mm")
+
+        self._panel(draw, (7, 104, 116, 124))
+        draw.text((13, 108), "CREDITS", font=F8, fill=self.theme.muted)
+        draw.text((110, 107), usage.credits or "—", font=F10, fill=self.theme.success, anchor="ra")
+        self._panel(draw, (122, 104, 233, 124))
+        draw.text((128, 108), "RESET BANK", font=F8, fill=self.theme.muted)
+        draw.text((226, 106), str(usage.reset_credits), font=F13, fill=self.theme.accent, anchor="ra")
+
+        if usage.limit_reached or not usage.ordinary_allowed:
+            draw.rectangle((7, 104, 233, 124), fill=self.theme.danger)
+            draw.text((120, 108), "LIMIT REACHED", font=F11, fill=self.theme.bg, anchor="ma")
+
 
 def mock_snapshot() -> Snapshot:
     """A lively deterministic frame for docs and hardware orientation tests."""
@@ -310,4 +371,9 @@ def mock_snapshot() -> Snapshot:
         network_link_mbps=100,
         nvpmodel="MODE_30W", l4t="R39.2.1", jetpack="7.2.1-b49",
         kernel="6.8.12-1021-tegra",
+        codex_usage=CodexUsage(
+            name="CODEX", plan="BUSINESS PROLITE",
+            windows=(UsageWindow("WEEKLY", 42, time.time() + 4 * 86400 + 19 * 3600),),
+            credits="AVAILABLE", reset_credits=2, updated_at=time.time(), error="",
+        ),
     )

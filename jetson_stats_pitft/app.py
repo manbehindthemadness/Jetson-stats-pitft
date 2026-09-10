@@ -131,15 +131,16 @@ def _page(value: str) -> int:
     try:
         return int(value) % len(names)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"page must be 0-5 or one of {', '.join(names)}") from exc
+        raise argparse.ArgumentTypeError(f"page must be 0-6 or one of {', '.join(names)}") from exc
 
 
 def _preview(directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     ui = DashboardUI()
     snapshot = mock_snapshot()
-    for index, name in enumerate(ui.page_names):
-        ui.render(snapshot, index).save(directory / f"{index}-{name.lower()}.png")
+    file_names = ("deck", "cpu", "gpu", "mem", "net", "system", "codex")
+    for index, name in enumerate(file_names):
+        ui.render(snapshot, index).save(directory / f"{index}-{name}.png")
 
 
 def main() -> None:
