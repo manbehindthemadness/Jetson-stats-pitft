@@ -329,12 +329,25 @@ class DashboardUI:
         if len(windows) == 1:
             window = windows[0]
             color = self.theme.danger if window.used_percent >= 90 else self.theme.primary
-            self._gauge(draw, (48, 70), 31, window.used_percent, color, window.label)
-            self._panel(draw, (91, 34, 233, 94))
-            draw.text((99, 41), "REMAINING", font=F8, fill=self.theme.muted)
-            draw.text((225, 38), f"{100 - window.used_percent}%", font=F24, fill=self.theme.success, anchor="ra")
-            draw.text((99, 68), "RESET IN", font=F8, fill=self.theme.muted)
-            draw.text((225, 65), _remaining(window.resets_at), font=F18, fill=self.theme.accent, anchor="ra")
+            self._gauge(draw, (46, 68), 29, window.used_percent, color, window.label)
+            self._panel(draw, (84, 29, 233, 101))
+            draw.text((92, 35), "REMAINING", font=F8, fill=self.theme.muted)
+            draw.text((225, 32), f"{100 - window.used_percent}%", font=F18, fill=self.theme.success, anchor="ra")
+            draw.text((92, 57), "WEEK RESET", font=F8, fill=self.theme.muted)
+            draw.text((225, 54), _remaining(window.resets_at), font=F13, fill=self.theme.accent, anchor="ra")
+
+            pace = usage.daily_percent
+            pace_color = self.theme.danger if pace >= 100 else (
+                self.theme.warn if pace >= 75 else self.theme.success
+            )
+            daily_reset = _remaining(usage.daily_resets_at)
+            budget = f"DAY {usage.daily_used:.0f}/{usage.daily_allowance:.1f}  {daily_reset}"
+            draw.text((92, 76), budget, font=F8, fill=self.theme.muted)
+            draw.text(
+                (225, 74), "STOP" if pace >= 100 else f"{pace:.0f}%",
+                font=F10, fill=pace_color, anchor="ra",
+            )
+            self._bar(draw, (92, 90, 225, 97), pace, pace_color)
         else:
             for index, window in enumerate(windows):
                 x = 59 + index * 120
@@ -375,5 +388,7 @@ def mock_snapshot() -> Snapshot:
             name="CODEX", plan="BUSINESS PROLITE",
             windows=(UsageWindow("WEEKLY", 42, time.time() + 4 * 86400 + 19 * 3600),),
             credits="AVAILABLE", reset_credits=2, updated_at=time.time(), error="",
+            daily_allowance=11.9, daily_used=7.8, daily_percent=65.5,
+            daily_resets_at=time.time() + 13 * 3600,
         ),
     )

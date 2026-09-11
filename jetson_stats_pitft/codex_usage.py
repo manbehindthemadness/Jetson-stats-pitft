@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 import os
@@ -36,6 +36,10 @@ class CodexUsage:
     limit_reached: str = ""
     updated_at: float = 0.0
     error: str = "waiting for Codex"
+    daily_allowance: float = 0.0
+    daily_used: float = 0.0
+    daily_percent: float = 0.0
+    daily_resets_at: float = 0.0
 
 
 def _window_label(window: dict[str, Any], fallback: str) -> str:
@@ -98,6 +102,77 @@ def parse_usage(result: dict[str, Any], now: float | None = None) -> CodexUsage:
     )
 
 
+class DailyBudgetTracker:
+    """Persist and calculate an even 24-hour budget for the weekly window."""
+
+    def __init__(self, path: Path | None = None):
+        state_root = Path(
+            os.environ.get(
+                "JETSON_PITFT_STATE_DIR",
+                Path.home() / ".local/state/jetson-stats-pitft",
+            )
+        )
+        self.path = path or state_root / "codex-daily-budget.json"
+        self._state = self._load()
+
+    def _load(self) -> dict[str, float]:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {}
+            return {key: float(value) for key, value in data.items()}
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return {}
+
+    def _save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps(self._state, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            temporary.chmod(0o600)
+            os.replace(temporary, self.path)
+        except OSError as exc:
+            LOG.warning("Could not persist Codex daily budget: %s", exc)
+
+    def apply(self, usage: CodexUsage, now: float | None = None) -> CodexUsage:
+        """Attach today's spend versus an evenly divided remaining allowance."""
+        current_time = time.time() if now is None else now
+        weekly = next((window for window in usage.windows if window.label == "WEEKLY"), None)
+        if weekly is None or weekly.resets_at <= current_time:
+            return usage
+
+        state = self._state
+        same_window = abs(state.get("weekly_resets_at", 0) - weekly.resets_at) < 1
+        in_period = current_time < state.get("daily_resets_at", 0)
+        monotonic_usage = weekly.used_percent >= state.get("used_at_start", 0)
+        if not (same_window and in_period and monotonic_usage):
+            remaining_days = max(1.0, (weekly.resets_at - current_time) / 86400.0)
+            allowance = max(0.0, 100.0 - weekly.used_percent) / remaining_days
+            state = {
+                "weekly_resets_at": weekly.resets_at,
+                "daily_started_at": current_time,
+                "daily_resets_at": min(weekly.resets_at, current_time + 86400.0),
+                "used_at_start": float(weekly.used_percent),
+                "daily_allowance": allowance,
+            }
+            self._state = state
+            self._save()
+
+        daily_used = max(0.0, weekly.used_percent - state["used_at_start"])
+        allowance = state["daily_allowance"]
+        daily_percent = 100.0 * daily_used / allowance if allowance > 0 else 100.0
+        return replace(
+            usage,
+            daily_allowance=allowance,
+            daily_used=daily_used,
+            daily_percent=daily_percent,
+            daily_resets_at=state["daily_resets_at"],
+        )
+
+
 class CodexUsageReader:
     """Keep one app-server alive and refresh account usage once per minute."""
 
@@ -109,6 +184,7 @@ class CodexUsageReader:
         self._process: subprocess.Popen[str] | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._budget = DailyBudgetTracker()
 
     @staticmethod
     def _codex_binary() -> str:
@@ -188,13 +264,15 @@ class CodexUsageReader:
             self._send(process, {
                 "id": 1,
                 "method": "initialize",
-                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.6.0"}},
+                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.0"}},
             })
             self._receive(process, 1)
             request_id = 2
             while not self._stop.is_set():
                 self._send(process, {"id": request_id, "method": "account/rateLimits/read"})
-                usage = parse_usage(self._receive(process, request_id))
+                now = time.time()
+                usage = parse_usage(self._receive(process, request_id), now=now)
+                usage = self._budget.apply(usage, now=now)
                 with self._lock:
                     self._latest = usage
                 request_id += 1
