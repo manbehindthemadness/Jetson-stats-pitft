@@ -270,7 +270,7 @@ class CodexUsageReader:
             self._send(process, {
                 "id": 1,
                 "method": "initialize",
-                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.1"}},
+                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.2"}},
             })
             self._receive(process, 1)
             request_id = 2

@@ -196,6 +196,21 @@ class DashboardUI:
         if width:
             draw.rounded_rectangle((x0, y0, x0 + width, y1), radius=2, fill=color)
 
+    def _daily_budget_bar(
+        self,
+        draw: ImageDraw.ImageDraw,
+        box: tuple[int, int, int, int],
+        value: float,
+    ) -> None:
+        """Draw the daily allowance, then overlay up to one bar of overage."""
+        self._bar(draw, box, min(value, 100), self.theme.success)
+        overflow = _clamp(value - 100)
+        if not overflow:
+            return
+        x0, y0, x1, y1 = box
+        width = max(1, int((x1 - x0) * overflow / 100))
+        draw.rounded_rectangle((x0, y0, x0 + width, y1), radius=2, fill=self.theme.danger)
+
     def _spark(self, draw: ImageDraw.ImageDraw, values: deque[float], box: tuple[int, int, int, int], color: str, maximum: float = 100) -> None:
         x0, y0, x1, y1 = box
         draw.line((x0, y1, x1, y1), fill=self.theme.track)
@@ -337,17 +352,17 @@ class DashboardUI:
             draw.text((225, 54), _remaining(window.resets_at), font=F13, fill=self.theme.accent, anchor="ra")
 
             pace = usage.daily_percent
-            pace_color = self.theme.danger if pace >= 100 else (
+            pace_color = self.theme.danger if pace > 100 else (
                 self.theme.warn if pace >= 75 else self.theme.success
             )
             daily_reset = _remaining(usage.daily_resets_at)
             budget = f"DAY {usage.daily_used:.0f}/{usage.daily_allowance:.1f}  {daily_reset}"
             draw.text((92, 76), budget, font=F8, fill=self.theme.muted)
             draw.text(
-                (225, 74), "STOP" if pace >= 100 else f"{pace:.0f}%",
+                (225, 74), f"{pace:.0f}%",
                 font=F10, fill=pace_color, anchor="ra",
             )
-            self._bar(draw, (92, 90, 225, 97), pace, pace_color)
+            self._daily_budget_bar(draw, (92, 90, 225, 97), pace)
         else:
             for index, window in enumerate(windows):
                 x = 59 + index * 120
