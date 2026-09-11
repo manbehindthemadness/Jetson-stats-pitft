@@ -99,9 +99,19 @@ class DailyBudgetTests(unittest.TestCase):
             self.assertAlmostEqual(usage.daily_percent, 50.0)
 
             usage = restarted.apply(self._usage(30, weekly_reset), now=start + 86401)
-            remaining_days = (weekly_reset - (start + 86401)) / 86400
             self.assertEqual(usage.daily_used, 0.0)
-            self.assertAlmostEqual(usage.daily_allowance, 70.0 / remaining_days)
+            self.assertAlmostEqual(usage.daily_allowance, 70.0 / 3)
+            self.assertEqual(usage.daily_resets_at, start + 2 * 86400)
+
+    def test_daily_boundaries_count_backward_from_weekly_rollover(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = DailyBudgetTracker(Path(directory) / "budget.json")
+            start = 4_000_000.0
+            until_reset = 6 * 86400 + 3 * 3600 + 19 * 60
+            usage = tracker.apply(self._usage(5, start + until_reset), now=start)
+
+            self.assertAlmostEqual(usage.daily_allowance, 95.0 / 7)
+            self.assertEqual(usage.daily_resets_at, start + 3 * 3600 + 19 * 60)
 
     def test_new_week_starts_a_new_daily_budget(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

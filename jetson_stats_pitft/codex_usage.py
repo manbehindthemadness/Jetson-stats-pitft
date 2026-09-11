@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import selectors
@@ -16,6 +17,7 @@ from typing import Any
 
 
 LOG = logging.getLogger(__name__)
+BUDGET_SCHEME = 2.0
 
 
 @dataclass(frozen=True)
@@ -145,16 +147,20 @@ class DailyBudgetTracker:
             return usage
 
         state = self._state
+        same_scheme = state.get("scheme") == BUDGET_SCHEME
         same_window = abs(state.get("weekly_resets_at", 0) - weekly.resets_at) < 1
         in_period = current_time < state.get("daily_resets_at", 0)
         monotonic_usage = weekly.used_percent >= state.get("used_at_start", 0)
-        if not (same_window and in_period and monotonic_usage):
-            remaining_days = max(1.0, (weekly.resets_at - current_time) / 86400.0)
-            allowance = max(0.0, 100.0 - weekly.used_percent) / remaining_days
+        if not (same_scheme and same_window and in_period and monotonic_usage):
+            remaining_seconds = weekly.resets_at - current_time
+            remaining_buckets = max(1, math.ceil(remaining_seconds / 86400.0))
+            daily_reset = weekly.resets_at - (remaining_buckets - 1) * 86400.0
+            allowance = max(0.0, 100.0 - weekly.used_percent) / remaining_buckets
             state = {
+                "scheme": BUDGET_SCHEME,
                 "weekly_resets_at": weekly.resets_at,
                 "daily_started_at": current_time,
-                "daily_resets_at": min(weekly.resets_at, current_time + 86400.0),
+                "daily_resets_at": daily_reset,
                 "used_at_start": float(weekly.used_percent),
                 "daily_allowance": allowance,
             }
@@ -264,7 +270,7 @@ class CodexUsageReader:
             self._send(process, {
                 "id": 1,
                 "method": "initialize",
-                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.0"}},
+                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.1"}},
             })
             self._receive(process, 1)
             request_id = 2

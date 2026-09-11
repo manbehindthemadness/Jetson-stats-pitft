@@ -54,11 +54,13 @@ minute, does not submit prompts or start agent turns, and never exposes or
 copies Codex credentials. The executable is discovered from `CODEX_BIN`,
 `PATH`, or the dashboard user's `~/.local/bin/codex`, in that order.
 
-For a single weekly window, the page also shows a **DAY** pacing bar. At the
-start of each 24-hour period it divides the remaining weekly percentage by the
-remaining time in 24-hour days. Usage added since that baseline is shown as a
-percentage of today's allocation: green below 75%, amber from 75–99%, and a red
-`STOP` indicator at 100%. The baseline is stored in
+For a single weekly window, the page also shows a **DAY** pacing bar. Daily
+boundaries are counted backward from the weekly rollover in exact 24-hour
+steps, so every bucket ends at the weekly reset's clock time. At each boundary,
+the remaining percentage is divided equally across the remaining daily
+buckets. Usage added since that baseline is shown as a percentage of today's
+allocation: green below 75%, amber from 75–99%, and a red `STOP` indicator at
+100%. The baseline is stored in
 `~/.local/state/jetson-stats-pitft/codex-daily-budget.json`, so restarting the
 dashboard does not reset the meter. A new weekly rollover or a lower upstream
 usage value starts a fresh budget automatically.
