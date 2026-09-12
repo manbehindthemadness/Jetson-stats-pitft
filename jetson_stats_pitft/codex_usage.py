@@ -140,7 +140,7 @@ class DailyBudgetTracker:
             LOG.warning("Could not persist Codex daily budget: %s", exc)
 
     def apply(self, usage: CodexUsage, now: float | None = None) -> CodexUsage:
-        """Attach today's spend versus an evenly divided remaining allowance."""
+        """Attach today's gross spend versus an evenly divided allowance."""
         current_time = time.time() if now is None else now
         weekly = next((window for window in usage.windows if window.label == "WEEKLY"), None)
         if weekly is None or weekly.resets_at <= current_time:
@@ -148,10 +148,8 @@ class DailyBudgetTracker:
 
         state = self._state
         same_scheme = state.get("scheme") == BUDGET_SCHEME
-        same_window = abs(state.get("weekly_resets_at", 0) - weekly.resets_at) < 1
         in_period = current_time < state.get("daily_resets_at", 0)
-        monotonic_usage = weekly.used_percent >= state.get("used_at_start", 0)
-        if not (same_scheme and same_window and in_period and monotonic_usage):
+        if not (same_scheme and in_period):
             remaining_seconds = weekly.resets_at - current_time
             remaining_buckets = max(1, math.ceil(remaining_seconds / 86400.0))
             daily_reset = weekly.resets_at - (remaining_buckets - 1) * 86400.0
@@ -162,12 +160,34 @@ class DailyBudgetTracker:
                 "daily_started_at": current_time,
                 "daily_resets_at": daily_reset,
                 "used_at_start": float(weekly.used_percent),
+                "last_used_percent": float(weekly.used_percent),
+                "daily_used": 0.0,
                 "daily_allowance": allowance,
             }
             self._state = state
             self._save()
+        else:
+            # Weekly utilization can fall when old work ages out of the rolling
+            # window. Count only positive steps so roll-off cannot erase today's
+            # spend or silently restart its 24-hour budget.
+            last_used = state.get(
+                "last_used_percent",
+                state.get("used_at_start", float(weekly.used_percent)),
+            )
+            daily_used = state.get(
+                "daily_used",
+                max(0.0, last_used - state.get("used_at_start", last_used)),
+            )
+            change = float(weekly.used_percent) - last_used
+            if change > 0:
+                daily_used += change
+            if change or "daily_used" not in state or "last_used_percent" not in state:
+                state["last_used_percent"] = float(weekly.used_percent)
+                state["daily_used"] = daily_used
+                state["weekly_resets_at"] = weekly.resets_at
+                self._save()
 
-        daily_used = max(0.0, weekly.used_percent - state["used_at_start"])
+        daily_used = state["daily_used"]
         allowance = state["daily_allowance"]
         daily_percent = 100.0 * daily_used / allowance if allowance > 0 else 100.0
         return replace(
@@ -270,7 +290,7 @@ class CodexUsageReader:
             self._send(process, {
                 "id": 1,
                 "method": "initialize",
-                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.2"}},
+                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.3"}},
             })
             self._receive(process, 1)
             request_id = 2

@@ -103,6 +103,42 @@ class DailyBudgetTests(unittest.TestCase):
             self.assertAlmostEqual(usage.daily_allowance, 70.0 / 3)
             self.assertEqual(usage.daily_resets_at, start + 2 * 86400)
 
+    def test_weekly_rolloff_does_not_erase_daily_spend(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "budget.json"
+            start = 2_500_000.0
+            weekly_reset = start + 4 * 86400
+            tracker = DailyBudgetTracker(path)
+            tracker.apply(self._usage(20, weekly_reset), now=start)
+
+            usage = tracker.apply(self._usage(25, weekly_reset), now=start + 3600)
+            self.assertEqual(usage.daily_used, 5.0)
+
+            usage = tracker.apply(self._usage(23, weekly_reset), now=start + 7200)
+            self.assertEqual(usage.daily_used, 5.0)
+
+            usage = tracker.apply(self._usage(24, weekly_reset), now=start + 10800)
+            self.assertEqual(usage.daily_used, 6.0)
+            self.assertAlmostEqual(usage.daily_percent, 30.0)
+
+            restarted = DailyBudgetTracker(path)
+            usage = restarted.apply(self._usage(25, weekly_reset), now=start + 14400)
+            self.assertEqual(usage.daily_used, 7.0)
+
+    def test_reset_timestamp_adjustment_does_not_restart_active_day(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = DailyBudgetTracker(Path(directory) / "budget.json")
+            start = 2_750_000.0
+            usage = tracker.apply(self._usage(20, start + 4 * 86400), now=start)
+            self.assertEqual(usage.daily_used, 0.0)
+
+            usage = tracker.apply(
+                self._usage(22, start + 4 * 86400 + 600),
+                now=start + 3600,
+            )
+            self.assertEqual(usage.daily_used, 2.0)
+            self.assertEqual(usage.daily_resets_at, start + 86400)
+
     def test_daily_boundaries_count_backward_from_weekly_rollover(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tracker = DailyBudgetTracker(Path(directory) / "budget.json")
