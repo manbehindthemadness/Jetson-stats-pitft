@@ -60,12 +60,14 @@ steps, so every bucket ends at the weekly reset's clock time. At each boundary,
 the remaining percentage is divided equally across the remaining daily
 buckets. Usage added since that baseline is shown as a percentage of today's
 allocation: green below 75%, amber from 75–100%, and a red percentage plus
-red overage pass above 100%. The baseline, latest weekly sample, and accumulated
-positive usage are stored in
+red overage pass above 100%. The active window identity, daily baseline, and
+accumulated usage are stored in
 `~/.local/state/jetson-stats-pitft/codex-daily-budget.json`, so restarting the
-dashboard does not reset the meter. Decreases caused by older work rolling out
-of the weekly window do not erase today's spend; the next weekly-anchored daily
-boundary starts a fresh budget.
+dashboard does not reset the meter. A weekly reset immediately clears daily
+spend and redistributes the full allowance. The first nonzero sample after a
+zero-use reset is counted toward day one using the newly reported weekly
+rollover. Small upstream corrections do not erase today's spend; the next
+weekly-anchored daily boundary starts a fresh budget.
 
 The Deck's **TRT** row is intentionally blank while Tensor Cores are dormant.
 A yellow-and-black striped **ON** badge appears when the CUPTI PM-sampling

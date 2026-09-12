@@ -139,6 +139,75 @@ class DailyBudgetTests(unittest.TestCase):
             self.assertEqual(usage.daily_used, 2.0)
             self.assertEqual(usage.daily_resets_at, start + 86400)
 
+    def test_weekly_reset_clears_daily_spend_and_restores_full_allowance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = DailyBudgetTracker(Path(directory) / "budget.json")
+            start = 2_800_000.0
+            tracker.apply(self._usage(18, start + 5 * 86400), now=start)
+            usage = tracker.apply(self._usage(20, start + 5 * 86400), now=start + 3600)
+            self.assertEqual(usage.daily_used, 2.0)
+
+            reset_time = start + 7200
+            usage = tracker.apply(
+                self._usage(0, reset_time + 7 * 86400),
+                now=reset_time,
+            )
+
+            self.assertEqual(usage.daily_used, 0.0)
+            self.assertEqual(usage.daily_percent, 0.0)
+            self.assertAlmostEqual(usage.daily_allowance, 100.0 / 7)
+            self.assertEqual(usage.daily_resets_at, reset_time + 86400)
+
+    def test_first_use_anchors_dormant_week_and_counts_toward_day_one(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = DailyBudgetTracker(Path(directory) / "budget.json")
+            start = 2_900_000.0
+            tracker.apply(self._usage(0, start + 7 * 86400), now=start)
+
+            first_use = start + 3 * 3600
+            usage = tracker.apply(
+                self._usage(2, first_use + 7 * 86400),
+                now=first_use,
+            )
+
+            self.assertEqual(usage.daily_used, 2.0)
+            self.assertAlmostEqual(usage.daily_allowance, 100.0 / 7)
+            self.assertEqual(usage.daily_resets_at, first_use + 86400)
+
+    def test_new_window_sampled_after_first_use_counts_fresh_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = DailyBudgetTracker(Path(directory) / "budget.json")
+            start = 2_950_000.0
+            old_reset = start + 2 * 86400
+            tracker.apply(self._usage(80, old_reset), now=start)
+
+            sample_time = start + 3600
+            usage = tracker.apply(
+                self._usage(3, sample_time + 7 * 86400),
+                now=sample_time,
+            )
+
+            self.assertEqual(usage.daily_used, 3.0)
+            self.assertAlmostEqual(usage.daily_allowance, 100.0 / 7)
+            self.assertEqual(usage.daily_resets_at, sample_time + 86400)
+
+    def test_scheme_upgrade_repairs_zero_weekly_nonzero_daily_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "budget.json"
+            path.write_text(
+                '{"scheme": 2, "daily_resets_at": 9999999, '
+                '"daily_used": 1, "daily_allowance": 14}\n',
+                encoding="utf-8",
+            )
+            tracker = DailyBudgetTracker(path)
+            start = 3_100_000.0
+
+            usage = tracker.apply(self._usage(0, start + 7 * 86400), now=start)
+
+            self.assertEqual(usage.daily_used, 0.0)
+            self.assertEqual(usage.daily_percent, 0.0)
+            self.assertAlmostEqual(usage.daily_allowance, 100.0 / 7)
+
     def test_daily_boundaries_count_backward_from_weekly_rollover(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tracker = DailyBudgetTracker(Path(directory) / "budget.json")

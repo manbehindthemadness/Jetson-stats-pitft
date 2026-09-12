@@ -17,7 +17,8 @@ from typing import Any
 
 
 LOG = logging.getLogger(__name__)
-BUDGET_SCHEME = 2.0
+BUDGET_SCHEME = 3.0
+NEW_WINDOW_SHIFT_SECONDS = 3600.0
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,35 @@ class DailyBudgetTracker:
         except OSError as exc:
             LOG.warning("Could not persist Codex daily budget: %s", exc)
 
+    def _start_period(
+        self,
+        weekly: UsageWindow,
+        current_time: float,
+        *,
+        baseline_used: float | None = None,
+        daily_used: float = 0.0,
+        dormant: bool | None = None,
+    ) -> dict[str, float]:
+        """Create a daily period anchored to the reported weekly rollover."""
+        remaining_seconds = weekly.resets_at - current_time
+        remaining_buckets = max(1, math.ceil(remaining_seconds / 86400.0))
+        daily_reset = weekly.resets_at - (remaining_buckets - 1) * 86400.0
+        baseline = float(weekly.used_percent) if baseline_used is None else baseline_used
+        state = {
+            "scheme": BUDGET_SCHEME,
+            "weekly_resets_at": weekly.resets_at,
+            "daily_started_at": current_time,
+            "daily_resets_at": daily_reset,
+            "used_at_start": baseline,
+            "last_used_percent": float(weekly.used_percent),
+            "daily_used": daily_used,
+            "daily_allowance": max(0.0, 100.0 - baseline) / remaining_buckets,
+            "dormant_window": float(weekly.used_percent == 0 if dormant is None else dormant),
+        }
+        self._state = state
+        self._save()
+        return state
+
     def apply(self, usage: CodexUsage, now: float | None = None) -> CodexUsage:
         """Attach today's gross spend versus an evenly divided allowance."""
         current_time = time.time() if now is None else now
@@ -150,42 +180,50 @@ class DailyBudgetTracker:
         same_scheme = state.get("scheme") == BUDGET_SCHEME
         in_period = current_time < state.get("daily_resets_at", 0)
         if not (same_scheme and in_period):
-            remaining_seconds = weekly.resets_at - current_time
-            remaining_buckets = max(1, math.ceil(remaining_seconds / 86400.0))
-            daily_reset = weekly.resets_at - (remaining_buckets - 1) * 86400.0
-            allowance = max(0.0, 100.0 - weekly.used_percent) / remaining_buckets
-            state = {
-                "scheme": BUDGET_SCHEME,
-                "weekly_resets_at": weekly.resets_at,
-                "daily_started_at": current_time,
-                "daily_resets_at": daily_reset,
-                "used_at_start": float(weekly.used_percent),
-                "last_used_percent": float(weekly.used_percent),
-                "daily_used": 0.0,
-                "daily_allowance": allowance,
-            }
-            self._state = state
-            self._save()
+            state = self._start_period(weekly, current_time)
         else:
-            # Weekly utilization can fall when old work ages out of the rolling
-            # window. Count only positive steps so roll-off cannot erase today's
-            # spend or silently restart its 24-hour budget.
             last_used = state.get(
                 "last_used_percent",
                 state.get("used_at_start", float(weekly.used_percent)),
             )
-            daily_used = state.get(
-                "daily_used",
-                max(0.0, last_used - state.get("used_at_start", last_used)),
+            reset_shift = weekly.resets_at - state.get("weekly_resets_at", weekly.resets_at)
+            reset_to_zero = last_used > 0 and weekly.used_percent == 0
+            replaced_window = (
+                weekly.used_percent < last_used
+                and reset_shift > NEW_WINDOW_SHIFT_SECONDS
             )
-            change = float(weekly.used_percent) - last_used
-            if change > 0:
-                daily_used += change
-            if change or "daily_used" not in state or "last_used_percent" not in state:
-                state["last_used_percent"] = float(weekly.used_percent)
-                state["daily_used"] = daily_used
-                state["weekly_resets_at"] = weekly.resets_at
-                self._save()
+
+            if reset_to_zero or replaced_window:
+                # A real reset may be sampled at zero, or just after fresh work
+                # has already entered the replacement window.
+                state = self._start_period(
+                    weekly,
+                    current_time,
+                    baseline_used=0.0,
+                    daily_used=float(weekly.used_percent),
+                )
+            elif state.get("dormant_window", 0) and weekly.used_percent > 0:
+                # Carry the zero baseline into the reported active window and
+                # include its first nonzero sample in today's spend.
+                state = self._start_period(
+                    weekly,
+                    current_time,
+                    baseline_used=0.0,
+                    daily_used=float(weekly.used_percent),
+                    dormant=False,
+                )
+            else:
+                # Preserve gross daily spend across small backend corrections.
+                # A positive step is new use; a negative step updates the sample
+                # baseline without subtracting work already counted today.
+                daily_used = state.get("daily_used", 0.0)
+                change = float(weekly.used_percent) - last_used
+                if change > 0:
+                    daily_used += change
+                if change or "daily_used" not in state:
+                    state["last_used_percent"] = float(weekly.used_percent)
+                    state["daily_used"] = daily_used
+                    self._save()
 
         daily_used = state["daily_used"]
         allowance = state["daily_allowance"]
@@ -290,7 +328,7 @@ class CodexUsageReader:
             self._send(process, {
                 "id": 1,
                 "method": "initialize",
-                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.3"}},
+                "params": {"clientInfo": {"name": "jetson-stats-pitft", "version": "0.7.4"}},
             })
             self._receive(process, 1)
             request_id = 2
